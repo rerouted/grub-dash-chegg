@@ -10,14 +10,31 @@ const nextId = require('../utils/nextId')
 function dishExists(req, res, next) {
 	const { dishId } = req.params
 	const foundDish = dishes.find((dish) => dish.id === dishId)
+
 	if (foundDish) {
 		res.locals.dish = foundDish
+		res.locals.dishId = dishId
 		return next()
 	}
-	next({
+
+	return next({
 		status: 404,
-		message: `Dish id not found: ${dishId}`,
+		message: `Dish does not exist: ${dishId}.`,
 	})
+}
+
+function idsMatch(req, res, next) {
+	const dishId = res.locals.dishId
+	const validatedDishData = res.locals.validatedDishData
+
+	if (validatedDishData.id && validatedDishData.id !== res.locals.dishId) {
+		return next({
+			status: 400,
+			message: `Dish-Route id mis-match. Dish Id: ${dishId}, Route Id: ${validatedDishData.id}`,
+		})
+	}
+
+	return next()
 }
 
 function validateDishProperties(req, res, next) {
@@ -87,17 +104,31 @@ function create(req, res) {
 	res.status(201).json({ data: newDish })
 }
 
+// function update(req, res) {
+// 	const dish = res.locals.dish
+// 	const dishToUpdate = { ...res.locals.validatedDishData }
+
+// 	res.locals.dish = { ...dish, ...dishToUpdate }
+// 	res.json({ data: res.locals.dish })
+// }
+
 function update(req, res) {
 	const dish = res.locals.dish
 	const dishToUpdate = { ...res.locals.validatedDishData }
 
-	res.locals.dish = { ...dish, ...dishToUpdate }
-	res.json({ data: res.locals.dish })
+	// Update the original dish object with values from dishToUpdate, excluding properties with null values
+	Object.keys(dishToUpdate).forEach((key) => {
+		if (dishToUpdate[key] !== null) {
+			dish[key] = dishToUpdate[key]
+		}
+	})
+
+	res.json({ data: dish })
 }
 
 module.exports = {
 	read: [dishExists, read],
 	create: [validateDishProperties, create],
-	update: [dishExists, validateDishProperties, update],
+	update: [dishExists, validateDishProperties, idsMatch, update],
 	list,
 }
