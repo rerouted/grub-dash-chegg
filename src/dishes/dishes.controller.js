@@ -87,10 +87,7 @@ function read(req, res, next) {
 }
 
 function list(req, res) {
-	const { dishId } = req.params
-	res.json({
-		data: dishes.filter(dishId ? (dish) => dish.id == dishId : () => true),
-	})
+	res.json({ data: dishes })
 }
 
 function create(req, res) {
@@ -104,19 +101,10 @@ function create(req, res) {
 	res.status(201).json({ data: newDish })
 }
 
-// function update(req, res) {
-// 	const dish = res.locals.dish
-// 	const dishToUpdate = { ...res.locals.validatedDishData }
-
-// 	res.locals.dish = { ...dish, ...dishToUpdate }
-// 	res.json({ data: res.locals.dish })
-// }
-
 function update(req, res) {
 	const dish = res.locals.dish
 	const dishToUpdate = { ...res.locals.validatedDishData }
 
-	// Update the original dish object with values from dishToUpdate, excluding properties with null values
 	Object.keys(dishToUpdate).forEach((key) => {
 		if (dishToUpdate[key] !== null) {
 			dish[key] = dishToUpdate[key]
