@@ -6,25 +6,25 @@ const orders = require(path.resolve('src/data/orders-data'))
 // Use this function to assign ID's when necessary
 const nextId = require('../utils/nextId')
 
-//validators
-function orderExists(req, res, next) {
-	const { orderId } = req.params
+//validator functions
+function orderFound(request, response, next) {
+	const { orderId } = request.params
 	const foundOrder = orders.find((order) => order.id === orderId)
 
 	if (foundOrder) {
-		res.locals.order = foundOrder
-		res.locals.orderId = orderId
+		response.locals.order = foundOrder
+		response.locals.orderId = orderId
 		return next()
 	}
 
 	return next({
 		status: 404,
-		message: `Order Id ${orderId} does not exist`,
+		message: `Order Id ${orderId} not found`,
 	})
 }
 
-function checkIfPending(req, res, next) {
-	const order = res.locals.order
+function isPending(request, response, next) {
+	const order = response.locals.order
 
 	if (order.status !== 'pending') {
 		return next({
@@ -36,9 +36,11 @@ function checkIfPending(req, res, next) {
 	return next()
 }
 
-function validateOrderProps(req, res, next) {
-	const { data = {} } = req.body
+// must be called first to ref response.locals.reqBody
+function hasDeliverToProp(request, response, next) {
+	const { data = {} } = request.body
 	const reqBody = data
+	response.locals.reqBody = reqBody
 
 	// Validation for 'deliverTo' prop
 	if (!reqBody.deliverTo) {
@@ -48,15 +50,22 @@ function validateOrderProps(req, res, next) {
 		})
 	}
 
-	// Validation for 'mobileNumber' prop
+	return next()
+}
+
+function hasMobileNumberProp(request, response, next) {
+	const reqBody = response.locals.reqBody
 	if (!reqBody.mobileNumber) {
 		return next({
 			status: 400,
 			message: 'Order must include a mobileNumber',
 		})
 	}
+	return next()
+}
 
-	// Validation for 'dishes' prop
+function hasDishesProp(request, response, next) {
+	const reqBody = response.locals.reqBody
 	if (
 		!reqBody.dishes ||
 		!reqBody.dishes.length ||
@@ -67,39 +76,25 @@ function validateOrderProps(req, res, next) {
 			message: 'Order must include < 1 dish',
 		})
 	}
-
-	// Validation for 'dish.quantity' prop
-	if (
-		!reqBody.dishes ||
-		!reqBody.dishes.length ||
-		!Array.isArray(reqBody.dishes)
-	) {
-		return next({
-			status: 400,
-			message: 'Order must include < 1 dish',
-		})
-	}
-
-	res.locals.validatedOrderData = reqBody
 	return next()
 }
 
-function idsMatch(req, res, next) {
-	const orderId = res.locals.orderId
-	const validatedOrderData = res.locals.validatedOrderData
+function idsMatch(request, response, next) {
+	const orderId = response.locals.orderId
+	const reqBody = response.locals.reqBody
 
-	if (validatedOrderData.id && validatedOrderData.id !== res.locals.orderId) {
+	if (reqBody.id && reqBody.id !== response.locals.orderId) {
 		return next({
 			status: 400,
-			message: `Order-Route id mis-match. Order Id: ${orderId}, Route Id: ${validatedOrderData.id}`,
+			message: `Order-Route id mis-match. Order Id: ${orderId}, Route Id: ${reqBody.id}`,
 		})
 	}
 
 	return next()
 }
 
-function hasValidStatus(req, res, next) {
-	const order = res.locals.validatedOrderData
+function hasValidStatus(request, response, next) {
+	const order = response.locals.reqBody
 
 	if (!order.status || order.status === 'invalid') {
 		next({
@@ -111,18 +106,18 @@ function hasValidStatus(req, res, next) {
 	return next()
 }
 
-function checkDishQtyProp(req, res, next) {
-	const order = res.locals.validatedOrderData
+function checkDishQtyProp(request, response, next) {
+	const order = response.locals.reqBody
 
-	const invalidIndexes = order.dishes.reduce((acc, dish, index) => {
+	const invalidIndexes = order.dishes.reduce((dishArray, dish, index) => {
 		if (
 			!dish.quantity ||
 			dish.quantity <= 0 ||
 			typeof dish.quantity !== 'number'
 		) {
-			acc.push(index)
+			dishArray.push(index)
 		}
-		return acc
+		return dishArray
 	}, [])
 
 	if (invalidIndexes.length === 0) {
@@ -141,28 +136,28 @@ function checkDishQtyProp(req, res, next) {
 }
 
 // --- begin end-points ---
-function read(req, res, next) {
-	res.json({ data: res.locals.order })
+function read(request, response, next) {
+	response.json({ data: response.locals.order })
 }
 
-function list(req, res) {
-	res.json({ data: orders })
+function list(request, response) {
+	response.json({ data: orders })
 }
 
-function create(req, res) {
+function create(request, response) {
 	const newOrder = {
-		...res.locals.validatedOrderData,
+		...response.locals.reqBody,
 		id: nextId(),
 	}
 
 	orders.push(newOrder)
 
-	res.status(201).json({ data: newOrder })
+	response.status(201).json({ data: newOrder })
 }
 
-function update(req, res) {
-	const order = res.locals.order
-	const orderToUpdate = res.locals.validatedOrderData
+function update(request, response) {
+	const order = response.locals.order
+	const orderToUpdate = response.locals.reqBody
 
 	Object.keys(orderToUpdate).forEach((key) => {
 		if (key !== 'id' && order[key] !== orderToUpdate[key]) {
@@ -170,27 +165,35 @@ function update(req, res) {
 		}
 	})
 
-	res.json({ data: order })
+	response.json({ data: order })
 }
 
-function destroy(req, res) {
-	const orderId = res.locals.orderId
+function destroy(request, response) {
+	const orderId = response.locals.orderId
 	const orderIndex = orders.findIndex((order) => order.id === orderId)
 	orders.splice(orderIndex, 1)
-	res.sendStatus(204)
+	response.sendStatus(204)
 }
 
 module.exports = {
-	read: [orderExists, read],
-	create: [validateOrderProps, checkDishQtyProp, create],
+	read: [orderFound, read],
+	create: [
+		hasDeliverToProp,
+		hasMobileNumberProp,
+		hasDishesProp,
+		checkDishQtyProp,
+		create,
+	],
 	update: [
-		orderExists,
-		validateOrderProps,
+		orderFound,
+		hasDeliverToProp,
+		hasMobileNumberProp,
+		hasDishesProp,
 		hasValidStatus,
 		checkDishQtyProp,
 		idsMatch,
 		update,
 	],
-	delete: [orderExists, checkIfPending, destroy],
+	delete: [orderFound, isPending, destroy],
 	list,
 }

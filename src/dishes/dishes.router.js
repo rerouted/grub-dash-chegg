@@ -2,7 +2,7 @@ const router = require('express').Router()
 const controller = require('./dishes.controller')
 const methodNotAllowed = require('../errors/methodNotAllowed')
 
-// PATH /dishes
+// Define end-points to /dishes
 router
 	.route('/:dishId')
 	.get(controller.read)

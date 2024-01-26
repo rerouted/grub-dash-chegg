@@ -6,58 +6,68 @@ const dishes = require(path.resolve('src/data/dishes-data'))
 // Use this function to assign ID's when necessary
 const nextId = require('../utils/nextId')
 
-//validators
-function dishExists(req, res, next) {
-	const { dishId } = req.params
+//validator functions
+
+function dishFound(request, response, next) {
+	const { dishId } = request.params
 	const foundDish = dishes.find((dish) => dish.id === dishId)
 
 	if (foundDish) {
-		res.locals.dish = foundDish
-		res.locals.dishId = dishId
+		response.locals.dish = foundDish
+		response.locals.dishId = dishId
 		return next()
 	}
 
 	return next({
 		status: 404,
-		message: `Dish does not exist: ${dishId}.`,
+		message: `Dish not found: ${dishId}.`,
 	})
 }
 
-function idsMatch(req, res, next) {
-	const dishId = res.locals.dishId
-	const validatedDishData = res.locals.validatedDishData
+function idsMatch(request, response, next) {
+	const dishId = response.locals.dishId
+	const reqBody = response.locals.reqBody
 
-	if (validatedDishData.id && validatedDishData.id !== res.locals.dishId) {
+	if (reqBody.id && reqBody.id !== response.locals.dishId) {
 		return next({
 			status: 400,
-			message: `Dish-Route id mis-match. Dish Id: ${dishId}, Route Id: ${validatedDishData.id}`,
+			message: `Dish-Route id mis-match. Dish Id: ${dishId}, Route Id: ${reqBody.id}`,
 		})
 	}
 
 	return next()
 }
 
-function validateDishProperties(req, res, next) {
-	const { data = {} } = req.body
+// must be called first to ref response.locals.reqBody
+function hasNameProp(request, response, next) {
+	const { data = {} } = request.body
 	const reqBody = data
+	response.locals.reqBody = reqBody
 
-	// Validation for 'name' property
 	if (!reqBody.name) {
 		return next({
 			status: 400,
-			message: 'Dish must include a name.',
+			message: 'Dish must include name',
 		})
 	}
+	return next()
+}
 
-	// Validation for 'description' property
+function hasDescriptionProp(request, response, next) {
+	const reqBody = response.locals.reqBody
+
 	if (!reqBody.description) {
 		return next({
 			status: 400,
-			message: 'Dish must include a description.',
+			message: 'Dish must include description',
 		})
 	}
+	return next()
+}
 
-	// Validation for 'price' property
+function hasPriceProp(request, response, next) {
+	const reqBody = response.locals.reqBody
+
 	if (
 		!reqBody.price ||
 		reqBody.price < 0 ||
@@ -65,45 +75,44 @@ function validateDishProperties(req, res, next) {
 	) {
 		return next({
 			status: 400,
-			message:
-				'Dish must include a price, and it must be a number greater than or equal to 0.',
+			message: 'Dish must include a price, numeral and < 0',
 		})
 	}
-
-	// Validation for 'image_url' property
-	if (!reqBody.image_url) {
-		return next({
-			status: 400,
-			message: 'Dish must include an image_url.',
-		})
-	}
-
-	res.locals.validatedDishData = reqBody
 	return next()
 }
 
-function read(req, res, next) {
-	res.json({ data: res.locals.dish })
-}
-
-function list(req, res) {
-	res.json({ data: dishes })
-}
-
-function create(req, res) {
-	const newDish = {
-		...res.locals.validatedDishData,
-		id: nextId(),
+function hasImageProp(request, response, next) {
+	const reqBody = response.locals.reqBody
+	if (!reqBody.image_url) {
+		return next({
+			status: 400,
+			message: 'Dish must include image_url',
+		})
 	}
 
-	dishes.push(newDish)
-
-	res.status(201).json({ data: newDish })
+	return next()
 }
 
-function update(req, res) {
-	const dish = res.locals.dish
-	const dishToUpdate = { ...res.locals.validatedDishData }
+function read(request, response, next) {
+	response.json({ data: response.locals.dish })
+}
+
+function list(request, response) {
+	response.json({ data: dishes })
+}
+
+function create(request, response) {
+	const newDish = {
+		...response.locals.reqBody,
+		id: nextId(),
+	}
+	dishes.push(newDish)
+	response.status(201).json({ data: newDish })
+}
+
+function update(request, response) {
+	const dish = response.locals.dish
+	const dishToUpdate = { ...response.locals.reqBody }
 
 	Object.keys(dishToUpdate).forEach((key) => {
 		if (dishToUpdate[key] !== null) {
@@ -111,12 +120,20 @@ function update(req, res) {
 		}
 	})
 
-	res.json({ data: dish })
+	response.json({ data: dish })
 }
 
 module.exports = {
-	read: [dishExists, read],
-	create: [validateDishProperties, create],
-	update: [dishExists, validateDishProperties, idsMatch, update],
+	read: [dishFound, read],
+	create: [hasNameProp, hasDescriptionProp, hasPriceProp, hasImageProp, create],
+	update: [
+		dishFound,
+		hasNameProp,
+		hasDescriptionProp,
+		hasPriceProp,
+		hasImageProp,
+		idsMatch,
+		update,
+	],
 	list,
 }
